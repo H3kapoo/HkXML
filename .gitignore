@@ -1,0 +1,12 @@
+artifacts/
+data/
+out2.bin
+output.bin
+test.proto
+test.txt
+test.xml
+tt.txt
+
+src/_main.cpp
+src/protobuf.cpp
+src/xml.cpp
