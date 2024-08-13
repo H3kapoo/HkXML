@@ -1,6 +1,6 @@
-#include "hkXml.hpp"
+#include "HkXml.hpp"
 
-// #define MUTE_PRINT
+#define MUTE_PRINT
 #include "Utility.hpp"
 
 namespace hk

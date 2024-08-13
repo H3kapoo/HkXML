@@ -10,3 +10,5 @@ tt.txt
 src/_main.cpp
 src/protobuf.cpp
 src/xml.cpp
+
+.gitignore
