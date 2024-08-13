@@ -13,3 +13,6 @@
 
 ### Usage
 Please check ```main.cpp```.
+
+### Notes
+ - Windows/MacOS not supported in CMakeLists but if you know what to put there, go on. No posix dependencies.
