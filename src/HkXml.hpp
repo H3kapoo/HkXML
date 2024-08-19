@@ -25,25 +25,36 @@ public:
     struct Node;
     using Tag = std::pair<std::string, std::string>;
     using NodeSPtr = std::shared_ptr<Node>;
-    using NodeListPtr = std::vector<NodeSPtr>;
+    using NodeWPtr = std::weak_ptr<Node>;
+    using NodeVec = std::vector<NodeSPtr>;
     using ErrorData = std::string;
-    using AttrPairVec = std::vector<std::pair<std::string, std::string>>;
-    using XmlResult = std::pair<NodeListPtr, ErrorData>;
+    using AttrPair = std::pair<std::string, std::string>;
+    using AttrPairVec = std::vector<AttrPair>;
+    using XmlResult = std::pair<NodeVec, ErrorData>; // this should be changed to bellow
+    // using XmlResult = std::pair<NodeSPtr, ErrorData>;
 
     struct Node
     {
+        NodeSPtr getTagNamed(const std::string& tagName);
+        NodeVec getTagsNamed(const std::string& tagName);
+        NodeSPtr getTagNamedWithAttrib(const std::string& tagName, const AttrPair& attrib);
+        std::optional<std::string> getAttribValue(const std::string& attribKey);
+
         void show(const uint32_t depth = 0);
 
         std::string nodeName;
         std::string innerText;
         AttrPairVec attributes;
-        NodeListPtr children;
+        NodeWPtr parent;
+        NodeVec children;
     };
 
     XMLDecoder() = default;
 
-    XmlResult decodeFromStream(std::ifstream& stream);
+    static NodeSPtr
+    findDirectChildWithTagAndAttribFromVec(const NodeVec& nodes, const std::string& tagName, const AttrPair& attrib);
 
+    XmlResult decodeFromStream(std::ifstream& stream);
     XmlResult decodeFromBuffer([[maybe_unused]] std::vector<uint8_t> buffer);
 
 private:
@@ -59,7 +70,7 @@ private:
         SkipComment,
     };
 
-    XmlResult decode(std::ifstream& stream, const State startState = State::Idle);
+    XmlResult decode(std::ifstream& stream, const NodeSPtr pNode, const State startState = State::Idle);
 
     std::string getStateString(const State& state);
 

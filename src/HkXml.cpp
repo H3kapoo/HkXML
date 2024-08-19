@@ -1,5 +1,9 @@
 #include "HkXml.hpp"
 
+#include <format>
+#include <memory>
+#include <ranges>
+
 #define MUTE_PRINT
 #include "Utility.hpp"
 
@@ -8,7 +12,7 @@ namespace hk
 
 XMLDecoder::XmlResult XMLDecoder::decodeFromStream(std::ifstream& stream)
 {
-    return decode(stream);
+    return decode(stream, nullptr);
 }
 
 XMLDecoder::XmlResult decodeFromBuffer([[maybe_unused]] std::vector<uint8_t> buffer)
@@ -16,7 +20,7 @@ XMLDecoder::XmlResult decodeFromBuffer([[maybe_unused]] std::vector<uint8_t> buf
     return XMLDecoder::XmlResult{};
 }
 
-XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const State startState)
+XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const NodeSPtr pNode, const State startState)
 {
     std::string charAccumulator;
     State state{State::Idle};
@@ -24,7 +28,7 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const State star
 
     changeState(state, startState);
 
-    NodeListPtr nodes;
+    NodeVec nodes;
     NodeSPtr node = std::make_shared<Node>();
 
     while (stream.peek() != EOF)
@@ -94,7 +98,7 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const State star
                             return {nodes, errorString};
                         }
 
-                        XmlResult result = decode(stream, State::AquireTagOpName);
+                        XmlResult result = decode(stream, node, State::AquireTagOpName);
 
                         /* If we encountered errors, bail out */
                         if (!result.second.empty())
@@ -156,6 +160,7 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const State star
 
                         /* Push node to children list */
                         nodes.push_back(node);
+                        nodes.back()->parent = pNode;
 
                         /* Clear closingNameHolder, no need anymore */
                         charAccumulator.clear();
@@ -196,6 +201,7 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const State star
                     if (stream.peek() == '>')
                     {
                         nodes.push_back(node);
+                        nodes.back()->parent = pNode;
                         changeState(state, State::Idle);
 
                         /* Clear closingNameHolder, no need anymore */
@@ -253,6 +259,7 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const State star
                 if (state == State::AquireTagOpName && stream.peek() == '>')
                 {
                     nodes.push_back(node);
+                    nodes.back()->parent = pNode;
                     changeState(state, State::Idle);
 
                     /* Clear closingNameHolder, no need anymore */
@@ -349,6 +356,64 @@ std::string XMLDecoder::getStateString(const State& state)
     return "<state unknown>";
 }
 
+XMLDecoder::NodeSPtr XMLDecoder::Node::getTagNamed(const std::string& tagName)
+{
+    NodeVec nv = getTagsNamed(tagName);
+    return nv.empty() ? nullptr : nv[0];
+}
+
+XMLDecoder::NodeVec XMLDecoder::Node::getTagsNamed(const std::string& tagName)
+{
+    const auto tagNamedPred = [tagName](XMLDecoder::NodeSPtr node) { return node->nodeName == tagName; };
+    return children | std::views::filter(tagNamedPred) | std::ranges::to<std::vector>();
+}
+
+XMLDecoder::NodeSPtr XMLDecoder::Node::getTagNamedWithAttrib(const std::string& tagName, const AttrPair& searchAttrib)
+{
+    const auto attribPred = [searchAttrib](XMLDecoder::AttrPair attr)
+    { return attr.first == searchAttrib.first && attr.second == searchAttrib.second; };
+
+    const XMLDecoder::NodeVec& nodes = getTagsNamed(tagName);
+    for (const auto& node : nodes)
+    {
+        auto result = node->attributes | std::views::filter(attribPred);
+        if (!std::ranges::empty(result))
+        {
+            return node;
+        }
+    }
+    return nullptr;
+}
+
+std::optional<std::string> XMLDecoder::Node::getAttribValue(const std::string& attribKey)
+{
+    const auto attribKeyPred = [attribKey](XMLDecoder::AttrPair attrPair) { return attrPair.first == attribKey; };
+    XMLDecoder::AttrPairVec attrib = attributes | std::views::filter(attribKeyPred) | std::ranges::to<std::vector>();
+    if (attrib.empty())
+    {
+        return {};
+    }
+    return attrib[0].second;
+}
+
+XMLDecoder::NodeSPtr XMLDecoder::findDirectChildWithTagAndAttribFromVec(const NodeVec& nodes,
+    const std::string& tagName,
+    const AttrPair& searchAttrib)
+{
+    auto attribPred = [searchAttrib](const XMLDecoder::AttrPair attr)
+    { return attr.first == searchAttrib.first && attr.second == searchAttrib.second; };
+
+    for (const auto& node : nodes)
+    {
+        XMLDecoder::NodeSPtr protoNode = node->getTagNamedWithAttrib(tagName, searchAttrib);
+        if (protoNode)
+        {
+            return protoNode;
+        }
+    }
+    return nullptr;
+}
+
 void XMLDecoder::Node::show(const uint32_t depth)
 {
     for (uint32_t i = 0; i < depth; ++i)
@@ -367,7 +432,13 @@ void XMLDecoder::Node::show(const uint32_t depth)
     {
         print("[%s, %s]", key.c_str(), val.c_str());
     }
-    print("\n");
+
+    std::string pName{"None"};
+    if (const auto& p = parent.lock())
+    {
+        pName = p->nodeName;
+    }
+    print("{%s}\n", pName.c_str());
 
     for (const auto& node : children)
         node->show(depth + 1);
