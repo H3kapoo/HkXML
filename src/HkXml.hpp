@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -32,11 +33,13 @@ public:
     using AttrPairVec = std::vector<AttrPair>;
     using XmlResult = std::pair<NodeVec, ErrorData>; // this should be changed to bellow
     // using XmlResult = std::pair<NodeSPtr, ErrorData>;
+    using IndexBuffer = std::vector<uint32_t>;
 
     struct Node
     {
         NodeSPtr getTagNamed(const std::string& tagName);
         NodeVec getTagsNamed(const std::string& tagName);
+        std::tuple<NodeVec, IndexBuffer> getTagsNamedIndexed(const std::string& tagName);
         NodeSPtr getTagNamedWithAttrib(const std::string& tagName, const AttrPair& attrib);
         std::optional<std::string> getAttribValue(const std::string& attribKey);
 
@@ -52,7 +55,10 @@ public:
     XMLDecoder() = default;
 
     static NodeSPtr
-    findDirectChildWithTagAndAttribFromVec(const NodeVec& nodes, const std::string& tagName, const AttrPair& attrib);
+    getDirectChildWithTagAndAttribFromVec(const NodeVec& nodes, const std::string& tagName, const AttrPair& attrib);
+
+    static std::tuple<XMLDecoder::NodeSPtr, uint32_t>
+    selfGetDirectChildWithTagAndAttribFromVec(const NodeVec& nodes, const std::string& tagName, const AttrPair& attrib);
 
     XmlResult decodeFromStream(std::ifstream& stream);
     XmlResult decodeFromBuffer([[maybe_unused]] std::vector<uint8_t> buffer);

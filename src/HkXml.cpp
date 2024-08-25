@@ -1,6 +1,6 @@
 #include "HkXml.hpp"
 
-#include <format>
+#include <cstdint>
 #include <memory>
 #include <ranges>
 
@@ -159,7 +159,8 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const NodeSPtr p
                         changeState(state, State::Idle);
 
                         /* Push node to children list */
-                        nodes.push_back(node);
+                        // nodes.push_back(node);
+                        nodes.emplace_back(node);
                         nodes.back()->parent = pNode;
 
                         /* Clear closingNameHolder, no need anymore */
@@ -200,7 +201,8 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const NodeSPtr p
                     /* Check if tag is self closing (same lvl only) */
                     if (stream.peek() == '>')
                     {
-                        nodes.push_back(node);
+                        // nodes.push_back(node);
+                        nodes.emplace_back(node);
                         nodes.back()->parent = pNode;
                         changeState(state, State::Idle);
 
@@ -258,7 +260,8 @@ XMLDecoder::XmlResult XMLDecoder::decode(std::ifstream& stream, const NodeSPtr p
                  * case.*/
                 if (state == State::AquireTagOpName && stream.peek() == '>')
                 {
-                    nodes.push_back(node);
+                    // nodes.push_back(node);
+                    nodes.emplace_back(node);
                     nodes.back()->parent = pNode;
                     changeState(state, State::Idle);
 
@@ -368,6 +371,26 @@ XMLDecoder::NodeVec XMLDecoder::Node::getTagsNamed(const std::string& tagName)
     return children | std::views::filter(tagNamedPred) | std::ranges::to<std::vector>();
 }
 
+std::tuple<XMLDecoder::NodeVec, XMLDecoder::IndexBuffer>
+XMLDecoder::Node::getTagsNamedIndexed(const std::string& tagName)
+{
+    const auto tagNamedPred = [tagName](XMLDecoder::NodeSPtr node) { return node->nodeName == tagName; };
+
+    NodeVec nv;
+    IndexBuffer indexBuffer;
+    int32_t index{0};
+    for (const auto& ch : children)
+    {
+        if (ch->nodeName == tagName)
+        {
+            indexBuffer.push_back(index);
+            nv.push_back(ch);
+        }
+        index++;
+    }
+    return {nv, indexBuffer};
+}
+
 XMLDecoder::NodeSPtr XMLDecoder::Node::getTagNamedWithAttrib(const std::string& tagName, const AttrPair& searchAttrib)
 {
     const auto attribPred = [searchAttrib](XMLDecoder::AttrPair attr)
@@ -387,16 +410,25 @@ XMLDecoder::NodeSPtr XMLDecoder::Node::getTagNamedWithAttrib(const std::string& 
 
 std::optional<std::string> XMLDecoder::Node::getAttribValue(const std::string& attribKey)
 {
-    const auto attribKeyPred = [attribKey](XMLDecoder::AttrPair attrPair) { return attrPair.first == attribKey; };
-    XMLDecoder::AttrPairVec attrib = attributes | std::views::filter(attribKeyPred) | std::ranges::to<std::vector>();
-    if (attrib.empty())
+    for (const auto& attrib : attributes)
     {
-        return {};
+        if (attrib.first == attribKey)
+        {
+            return attrib.second;
+        }
     }
-    return attrib[0].second;
+    return {};
+
+    // const auto attribKeyPred = [attribKey](XMLDecoder::AttrPair attrPair) { return attrPair.first == attribKey; };
+    // XMLDecoder::AttrPairVec attrib = attributes | std::views::filter(attribKeyPred) | std::ranges::to<std::vector>();
+    // if (attrib.empty())
+    // {
+    //     return {};
+    // }
+    // return attrib[0].second;
 }
 
-XMLDecoder::NodeSPtr XMLDecoder::findDirectChildWithTagAndAttribFromVec(const NodeVec& nodes,
+XMLDecoder::NodeSPtr XMLDecoder::getDirectChildWithTagAndAttribFromVec(const NodeVec& nodes,
     const std::string& tagName,
     const AttrPair& searchAttrib)
 {
@@ -412,6 +444,26 @@ XMLDecoder::NodeSPtr XMLDecoder::findDirectChildWithTagAndAttribFromVec(const No
         }
     }
     return nullptr;
+}
+
+std::tuple<XMLDecoder::NodeSPtr, uint32_t> XMLDecoder::selfGetDirectChildWithTagAndAttribFromVec(const NodeVec& nodes,
+    const std::string& tagName,
+    const AttrPair& searchAttrib)
+{
+    auto attribPred = [searchAttrib](const XMLDecoder::AttrPair attr)
+    { return attr.first == searchAttrib.first && attr.second == searchAttrib.second; };
+
+    int32_t index{0};
+    for (const auto& node : nodes)
+    {
+        XMLDecoder::NodeSPtr protoNode = node->getTagNamedWithAttrib(tagName, searchAttrib);
+        if (protoNode)
+        {
+            return {node, index};
+        }
+        index++;
+    }
+    return {nullptr, 0};
 }
 
 void XMLDecoder::Node::show(const uint32_t depth)
